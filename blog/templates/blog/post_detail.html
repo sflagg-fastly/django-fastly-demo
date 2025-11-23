@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}{{ object.title }}{% endblock %}
+
+{% block content %}
+  <h1>{{ object.title }}</h1>
+  <p><small>Published {{ object.published_at|date:"Y-m-d H:i" }}</small></p>
+  <div>
+    {{ object.body|linebreaks }}
+  </div>
+{% endblock %}

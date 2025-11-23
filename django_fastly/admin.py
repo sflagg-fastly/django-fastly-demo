@@ -1,0 +1,77 @@
+from django.contrib import admin, messages
+
+from .api import FastlyAPIError, get_fastly_client
+from .models import FastlyConfig, PurgeLog
+
+
+@admin.register(FastlyConfig)
+class FastlyConfigAdmin(admin.ModelAdmin):
+    fieldsets = (
+        (
+            "Credentials",
+            {
+                "fields": ("enabled", "api_token", "service_id"),
+                "description": "Configure your Fastly service credentials.",
+            },
+        ),
+        (
+            "Caching policy",
+            {
+                "fields": (
+                    "soft_purge",
+                    "default_ttl",
+                    "stale_while_revalidate",
+                    "stale_if_error",
+                )
+            },
+        ),
+        (
+            "Advanced",
+            {
+                "fields": ("always_purged_keys", "webhook_url"),
+            },
+        ),
+    )
+    actions = ["test_connection", "purge_all_cache"]
+
+    def has_add_permission(self, request):
+        if FastlyConfig.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    @admin.action(description="Test Fastly connection")
+    def test_connection(self, request, queryset):
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+            ok, msg = client.test_connection()
+            level = messages.SUCCESS if ok else messages.ERROR
+            self.message_user(request, msg, level=level)
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+
+    @admin.action(description="Purge all Fastly cache")
+    def purge_all_cache(self, request, queryset):
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+            client.purge_all(soft=config.soft_purge)
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+        else:
+            self.message_user(request, "Triggered Fastly purge-all.", level=messages.WARNING)
+
+
+@admin.register(PurgeLog)
+class PurgeLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "method", "target", "success", "response_status")
+    list_filter = ("method", "success", "response_status")
+    readonly_fields = (
+        "created_at",
+        "method",
+        "target",
+        "success",
+        "response_status",
+        "response_body",
+    )
+    search_fields = ("target",)

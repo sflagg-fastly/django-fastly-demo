@@ -1,0 +1,76 @@
+# --- Python general ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+*.env
+*.venv
+
+# --- Django / project-specific ---
+# SQLite DB
+db.sqlite3
+example_project/db.sqlite3
+
+# Django collected static files
+static/
+staticfiles/
+
+# Local settings override (if you ever add it)
+settings_local.py
+
+# Media uploads (if you add them later)
+media/
+
+# --- Logs & runtime files ---
+*.log
+logs/
+celerybeat-schedule
+celerybeat.pid
+
+# Coverage / testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+*.pytest_cache/
+
+# mypy / type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# --- IDEs / editors ---
+# VS Code
+.vscode/
+# PyCharm / IntelliJ
+.idea/
+*.iml
+# Misc editor files
+*.swp
+*.swo
+*~
+
+# MacOS Finder cruft
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/

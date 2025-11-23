@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-fastly-demo"
+version = "0.1.0"
+description = "Demo Fastly integration for Django with a simple blog."
+authors = [{ name = "Your Name", email = "you@example.com" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "Django>=4.2",
+    "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://example.com/"
