@@ -3,9 +3,18 @@
 {% block title %}{{ object.title }}{% endblock %}
 
 {% block content %}
-  <h1>{{ object.title }}</h1>
-  <p><small>Published {{ object.published_at|date:"Y-m-d H:i" }}</small></p>
-  <div>
-    {{ object.body|linebreaks }}
-  </div>
+  <a class="back-link" href="{% url 'blog:post_list' %}">
+    Back to posts
+  </a>
+
+  <article class="post-detail">
+    <h1>{{ object.title }}</h1>
+    <p class="post-meta">
+      Published {{ object.published_at|date:"Y-m-d H:i" }}
+    </p>
+
+    <div class="post-detail-body">
+      {{ object.body|linebreaks }}
+    </div>
+  </article>
 {% endblock %}

@@ -3,15 +3,33 @@
 {% block title %}Blog{% endblock %}
 
 {% block content %}
-  <h1>Blog</h1>
-  <ul>
-    {% for post in posts %}
-      <li>
-        <a href="{{ post.get_absolute_url }}">{{ post.title }}</a>
-        ({{ post.published_at|date:"Y-m-d H:i" }})
-      </li>
-    {% empty %}
-      <li>No posts yet.</li>
-    {% endfor %}
-  </ul>
+  <section class="page-header">
+    <h1 class="page-title">Latest posts</h1>
+    <p class="page-subtitle">
+      A minimal Django blog used to demonstrate Fastly edge integration.
+    </p>
+  </section>
+
+  {% if posts %}
+    <section class="post-list">
+      {% for post in posts %}
+        <article class="post-card">
+          <h2>
+            <a href="{{ post.get_absolute_url }}">{{ post.title }}</a>
+          </h2>
+          <p class="post-meta">
+            Published {{ post.published_at|date:"Y-m-d H:i" }}
+          </p>
+          <p class="post-excerpt">
+            {{ post.body|truncatewords:30 }}
+          </p>
+          <a class="post-readmore" href="{{ post.get_absolute_url }}">
+            Read more
+          </a>
+        </article>
+      {% endfor %}
+    </section>
+  {% else %}
+    <p class="empty-state">No posts yet. Add one in the Django admin.</p>
+  {% endif %}
 {% endblock %}
