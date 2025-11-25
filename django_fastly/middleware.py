@@ -27,6 +27,7 @@ class FastlySurrogateKeyMiddleware(MiddlewareMixin):
         if keys:
             response["Surrogate-Key"] = " ".join(keys)
 
+        # Surrogate-Control
         if config.default_ttl:
             parts = [f"max-age={config.default_ttl}"]
             if config.stale_while_revalidate:
@@ -35,6 +36,9 @@ class FastlySurrogateKeyMiddleware(MiddlewareMixin):
                 parts.append(f"stale-if-error={config.stale_if_error}")
             response["Surrogate-Control"] = ", ".join(parts)
 
-        response.setdefault("Cache-Control", f"public, max-age={config.default_ttl}")
+        # Cache-Control (separate TTL, defaults to same as surrogate if unset)
+        cache_ttl = config.cache_ttl or config.default_ttl
+        if cache_ttl:
+            response.setdefault("Cache-Control", f"public, max-age={cache_ttl}")
 
         return response

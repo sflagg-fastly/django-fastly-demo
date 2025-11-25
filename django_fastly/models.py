@@ -17,15 +17,33 @@ class FastlyConfig(models.Model):
     )
     enabled = models.BooleanField(default=True)
 
+    # NEW: overrideable API endpoint
+    api_endpoint = models.URLField(
+        max_length=255,
+        blank=True,
+        help_text=_(
+            "Optional Fastly API endpoint override. "
+            "Leave blank to use the default https://api.fastly.com."
+        ),
+    )
+
     soft_purge = models.BooleanField(
         default=True,
         help_text=_("Use Fastly Soft Purge by default."),
     )
 
+    # Surrogate TTL (matches “Surrogate Cache TTL”)
     default_ttl = models.PositiveIntegerField(
         default=300,
         help_text=_("Surrogate-Control max-age (seconds)."),
     )
+
+    # NEW: separate cache TTL for Cache-Control (matches “Cache TTL”)
+    cache_ttl = models.PositiveIntegerField(
+        default=300,
+        help_text=_("Cache-Control max-age (seconds)."),
+    )
+
     stale_while_revalidate = models.PositiveIntegerField(
         default=0,
         blank=True,
@@ -37,15 +55,50 @@ class FastlyConfig(models.Model):
         help_text=_("stale-if-error (seconds, 0 = disabled)."),
     )
 
+    # NEW: safety switch for purge-all
+    allow_full_cache_purges = models.BooleanField(
+        default=False,
+        help_text=_("Allow triggering full cache purges from the Django admin."),
+    )
+
+    # NEW: toggle logging of purges
+    log_purges = models.BooleanField(
+        default=True,
+        help_text=_("Log Fastly purge requests to the PurgeLog table."),
+    )
+
+    # NEW: debug flag
+    debug_mode = models.BooleanField(
+        default=False,
+        help_text=_("Enable extra debug logging for Fastly API calls."),
+    )
+
     always_purged_keys = models.TextField(
         blank=True,
         help_text=_("One surrogate key per line to always purge with blog posts."),
     )
 
+    # Webhooks section
     webhook_url = models.URLField(
         blank=True,
         null=True,
         help_text=_("Optional webhook URL (e.g. Slack) to log purges."),
+    )
+
+    # NEW: more webhook options
+    webhook_username = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text=_("Optional display name for webhook messages (e.g. Slack username)."),
+    )
+    webhook_channel = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text=_("Optional channel identifier, e.g. #general."),
+    )
+    webhook_active = models.BooleanField(
+        default=False,
+        help_text=_("Send purge notifications to the configured webhook."),
     )
 
     updated_at = models.DateTimeField(auto_now=True)
@@ -61,7 +114,6 @@ class FastlyConfig(models.Model):
     def get_solo(cls) -> "FastlyConfig":
         obj, _created = cls.objects.get_or_create(pk=1)
         return obj
-
 
 class PurgeLog(models.Model):
     METHOD_URL = "url"

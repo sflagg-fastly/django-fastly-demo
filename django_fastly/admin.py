@@ -8,27 +8,43 @@ from .models import FastlyConfig, PurgeLog
 class FastlyConfigAdmin(admin.ModelAdmin):
     fieldsets = (
         (
-            "Credentials",
+            "General",
             {
-                "fields": ("enabled", "api_token", "service_id"),
-                "description": "Configure your Fastly service credentials.",
+                "fields": (
+                    "enabled",
+                    "api_token",
+                    "service_id",
+                    "api_endpoint",
+                ),
+                "description": "Configure your Fastly credentials and API endpoint.",
             },
         ),
         (
-            "Caching policy",
+            "Advanced cache settings",
             {
                 "fields": (
                     "soft_purge",
                     "default_ttl",
+                    "cache_ttl",
                     "stale_while_revalidate",
                     "stale_if_error",
-                )
+                    "allow_full_cache_purges",
+                    "log_purges",
+                    "debug_mode",
+                    "always_purged_keys",
+                ),
             },
         ),
         (
-            "Advanced",
+            "Webhooks",
             {
-                "fields": ("always_purged_keys", "webhook_url"),
+                "fields": (
+                    "webhook_url",
+                    "webhook_username",
+                    "webhook_channel",
+                    "webhook_active",
+                ),
+                "description": "Optional webhook (e.g. Slack) notifications for purges.",
             },
         ),
     )
@@ -53,13 +69,27 @@ class FastlyConfigAdmin(admin.ModelAdmin):
     @admin.action(description="Purge all Fastly cache")
     def purge_all_cache(self, request, queryset):
         config = FastlyConfig.get_solo()
+
+        if not config.allow_full_cache_purges:
+            self.message_user(
+                request,
+                "Full cache purges are disabled. Enable 'allow_full_cache_purges' "
+                "in the Advanced settings if you really want this.",
+                level=messages.ERROR,
+            )
+            return
+
         try:
             client = get_fastly_client(config)
             client.purge_all(soft=config.soft_purge)
         except FastlyAPIError as exc:
             self.message_user(request, str(exc), level=messages.ERROR)
         else:
-            self.message_user(request, "Triggered Fastly purge-all.", level=messages.WARNING)
+            self.message_user(
+                request,
+                "Triggered Fastly purge-all.",
+                level=messages.WARNING,
+            )
 
 
 @admin.register(PurgeLog)
