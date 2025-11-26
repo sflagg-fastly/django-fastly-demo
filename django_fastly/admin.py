@@ -134,10 +134,10 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
             "CORS configuration",
             {
                 "fields": (
-                    "allowed_origins",
+                    "origin_mode",
                     "allowed_methods",
                     "allowed_headers",
-                    "expose_headers",
+                    "allowed_origins_regex",
                     "max_age",
                     "allow_credentials",
                 )
@@ -147,19 +147,20 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
 
     list_display = (
         "enabled",
-        "allowed_origins_short",
+        "origin_mode",
+        "allowed_origins_regex_short",
         "max_age",
         "allow_credentials",
         "updated_at",
     )
 
-    def allowed_origins_short(self, obj):
-        value = (obj.allowed_origins or "").strip()
+    def allowed_origins_regex_short(self, obj):
+        value = (obj.allowed_origins_regex or "").strip()
         if not value:
             return "(none)"
-        first_line = value.splitlines()[0]
-        if len(first_line) > 40:
-            return first_line[:37] + "..."
-        return first_line
+        if len(value) > 40:
+            return value[:37] + "..."
+        return value
 
-    allowed_origins_short.short_description = "Allowed origins"
+    allowed_origins_regex_short.short_description = "Allowed origins regex"
+
