@@ -141,61 +141,72 @@ class EdgeModuleCors(models.Model):
     """
     Edge Module: CORS headers
 
-    Inspired by the WP Fastly Edge Modules, this is the Django config surface
-    that a future VCL/template generator can use.
+    Inspired by the Fastly WP plugin Edge Module definition.
     """
+
+    ORIGIN_ANYONE = "anyone"
+    ORIGIN_REGEX = "regex-match"
+
+    ORIGIN_MODE_CHOICES = [
+        (ORIGIN_ANYONE, "Allow anyone (*)"),
+        (ORIGIN_REGEX, "Regex matching set of origins"),
+    ]
 
     enabled = models.BooleanField(
         default=False,
         help_text=_("Enable this Edge Module (CORS headers)."),
     )
 
-    allowed_origins = models.TextField(
-        blank=True,
-        help_text=_(
-            "Allowed origins, one per line. Use * to allow all origins "
-            "(not recommended for production)."
-        ),
+    # Matches JSON property "origin"
+    origin_mode = models.CharField(
+        max_length=20,
+        choices=ORIGIN_MODE_CHOICES,
+        default=ORIGIN_ANYONE,
+        help_text=_("What origins are allowed."),
     )
 
+    # Matches JSON property "cors_allowed_methods"
     allowed_methods = models.CharField(
         max_length=200,
         blank=True,
+        default="GET,HEAD,POST,OPTIONS",
         help_text=_(
-            "Comma-separated list of allowed methods, e.g. GET, POST, OPTIONS."
+            "Allowed HTTP methods that the requestor can use, "
+            "e.g. GET,HEAD,POST,OPTIONS."
         ),
-        default="GET, POST, OPTIONS",
     )
 
+    # Matches JSON property "cors_allowed_headers"
     allowed_headers = models.CharField(
         max_length=200,
         blank=True,
         help_text=_(
-            "Comma-separated list of allowed request headers, "
+            "Allowed HTTP headers that the requestor can use, "
             "e.g. Content-Type, Authorization."
         ),
-        default="Content-Type",
     )
 
-    expose_headers = models.CharField(
-        max_length=200,
+    # Matches JSON property "cors_allowed_origins_regex"
+    allowed_origins_regex = models.CharField(
+        max_length=255,
         blank=True,
         help_text=_(
-            "Comma-separated list of response headers to expose "
-            "to JavaScript. Leave blank to expose none."
+            "Regex matching origins that are allowed to access this service. "
+            'Do not include the leading "http://" or "https://".'
         ),
     )
 
+    # You can keep these for future expansion (not used yet in VCL-equivalent logic)
     max_age = models.PositiveIntegerField(
         default=600,
-        help_text=_("Max age (in seconds) for preflight responses."),
+        help_text=_("Max age (in seconds) for preflight responses (not yet used)."),
     )
 
     allow_credentials = models.BooleanField(
         default=False,
         help_text=_(
             "Whether to send Access-Control-Allow-Credentials: true. "
-            "Requires a non-* origin."
+            "Requires a non-* origin (not yet used in VCL-equivalent logic)."
         ),
     )
 

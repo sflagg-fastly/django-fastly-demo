@@ -31,6 +31,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "example_project.middleware.BlockDangerousQueryParamsMiddleware", 
     "django_fastly.middleware.FastlySurrogateKeyMiddleware",
+    "django_fastly.middleware.FastlyCorsEdgeModuleMiddleware",
 ]
 
 ROOT_URLCONF = "example_project.urls"
