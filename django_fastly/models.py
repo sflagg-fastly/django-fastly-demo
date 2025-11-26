@@ -135,3 +135,81 @@ class PurgeLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.method} {self.target} @ {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
+class EdgeModuleCors(models.Model):
+    """
+    Edge Module: CORS headers
+
+    Inspired by the WP Fastly Edge Modules, this is the Django config surface
+    that a future VCL/template generator can use.
+    """
+
+    enabled = models.BooleanField(
+        default=False,
+        help_text=_("Enable this Edge Module (CORS headers)."),
+    )
+
+    allowed_origins = models.TextField(
+        blank=True,
+        help_text=_(
+            "Allowed origins, one per line. Use * to allow all origins "
+            "(not recommended for production)."
+        ),
+    )
+
+    allowed_methods = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_(
+            "Comma-separated list of allowed methods, e.g. GET, POST, OPTIONS."
+        ),
+        default="GET, POST, OPTIONS",
+    )
+
+    allowed_headers = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_(
+            "Comma-separated list of allowed request headers, "
+            "e.g. Content-Type, Authorization."
+        ),
+        default="Content-Type",
+    )
+
+    expose_headers = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_(
+            "Comma-separated list of response headers to expose "
+            "to JavaScript. Leave blank to expose none."
+        ),
+    )
+
+    max_age = models.PositiveIntegerField(
+        default=600,
+        help_text=_("Max age (in seconds) for preflight responses."),
+    )
+
+    allow_credentials = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Whether to send Access-Control-Allow-Credentials: true. "
+            "Requires a non-* origin."
+        ),
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Edge module: CORS headers")
+        verbose_name_plural = _("Edge modules: CORS headers")
+
+    def __str__(self) -> str:
+        status = "enabled" if self.enabled else "disabled"
+        return f"CORS Edge Module ({status})"
+
+    @classmethod
+    def get_solo(cls) -> "EdgeModuleCors":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

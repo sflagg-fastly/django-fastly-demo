@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 
 from .api import FastlyAPIError, get_fastly_client
-from .models import FastlyConfig, PurgeLog
+from .models import FastlyConfig, PurgeLog, EdgeModuleCors
 
 
 @admin.register(FastlyConfig)
