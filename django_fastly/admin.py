@@ -115,3 +115,51 @@ class PurgeLogAdmin(admin.ModelAdmin):
         "response_body",
     )
     search_fields = ("target",)
+
+
+@admin.register(EdgeModuleCors)
+class EdgeModuleCorsAdmin(admin.ModelAdmin):
+    fieldsets = (
+        (
+            "Edge Module",
+            {
+                "fields": ("enabled",),
+                "description": (
+                    "Configure CORS headers to be applied via Fastly VCL in a "
+                    "future step. For now this stores the settings."
+                ),
+            },
+        ),
+        (
+            "CORS configuration",
+            {
+                "fields": (
+                    "allowed_origins",
+                    "allowed_methods",
+                    "allowed_headers",
+                    "expose_headers",
+                    "max_age",
+                    "allow_credentials",
+                )
+            },
+        ),
+    )
+
+    list_display = (
+        "enabled",
+        "allowed_origins_short",
+        "max_age",
+        "allow_credentials",
+        "updated_at",
+    )
+
+    def allowed_origins_short(self, obj):
+        value = (obj.allowed_origins or "").strip()
+        if not value:
+            return "(none)"
+        first_line = value.splitlines()[0]
+        if len(first_line) > 40:
+            return first_line[:37] + "..."
+        return first_line
+
+    allowed_origins_short.short_description = "Allowed origins"
