@@ -117,6 +117,57 @@ class FastlyClient:
 
         if not resp.ok:
             raise FastlyAPIError(f"Purge URL '{path}' failed ({resp.status_code})")
+        
+        # django_fastly/api.py (inside FastlyClient)
+
+    def _get_active_version_number(self) -> int:
+        """
+        Fetch the currently active version number for this service.
+        """
+        url = f"{self.base_url}/service/{self.service_id}"
+        if self.config.debug_mode:
+            logger.debug("Fetching Fastly service detail for active version: %s", url)
+
+        resp = requests.get(url, headers=self._headers(), timeout=10)
+        if not resp.ok:
+            raise FastlyAPIError(
+                f"Failed to fetch service details ({resp.status_code}): {resp.text}"
+            )
+
+        data = resp.json()
+        versions = data.get("versions") or []
+        active = next((v for v in versions if v.get("active")), None)
+        if not active:
+            raise FastlyAPIError("No active Fastly version found for this service.")
+
+        try:
+            return int(active["number"])
+        except (KeyError, ValueError, TypeError):
+            raise FastlyAPIError("Active version number is missing or invalid.")
+
+    def validate_active_vcl(self) -> Tuple[bool, str]:
+        """
+        Validate the active VCL version via the Fastly API.
+        """
+        version = self._get_active_version_number()
+        url = f"{self.base_url}/service/{self.service_id}/version/{version}/validate"
+
+        if self.config.debug_mode:
+            logger.debug("Validating Fastly VCL: %s", url)
+
+        resp = requests.get(url, headers=self._headers(), timeout=10)
+        if resp.ok:
+            # Fastly returns JSON with status info; we keep it simple.
+            return True, (
+                f"Fastly VCL for service {self.service_id} "
+                f"version {version} is valid."
+            )
+
+        return False, (
+            f"Fastly VCL validation failed for service {self.service_id} "
+            f"version {version} ({resp.status_code}): {resp.text}"
+        )
+
 
 
 def get_fastly_client(config: FastlyConfig | None = None) -> FastlyClient:

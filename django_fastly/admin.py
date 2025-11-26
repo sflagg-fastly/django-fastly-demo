@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 
 from .api import FastlyAPIError, get_fastly_client
-from .models import FastlyConfig, PurgeLog
+from .models import FastlyConfig, PurgeLog, EdgeModuleCors
 
 
 @admin.register(FastlyConfig)
@@ -48,7 +48,7 @@ class FastlyConfigAdmin(admin.ModelAdmin):
             },
         ),
     )
-    actions = ["test_connection", "purge_all_cache"]
+    actions = ["test_connection", "purge_all_cache", "validate_active_vcl"]
 
     def has_add_permission(self, request):
         if FastlyConfig.objects.exists():
@@ -91,7 +91,17 @@ class FastlyConfigAdmin(admin.ModelAdmin):
                 level=messages.WARNING,
             )
 
-
+    @admin.action(description="Validate active Fastly VCL")
+    def validate_active_vcl(self, request, queryset):
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+            ok, msg = client.validate_active_vcl()
+            level = messages.SUCCESS if ok else messages.ERROR
+            self.message_user(request, msg, level=level)
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+        
 @admin.register(PurgeLog)
 class PurgeLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "method", "target", "success", "response_status")
