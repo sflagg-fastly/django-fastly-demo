@@ -164,3 +164,12 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
 
     allowed_origins_regex_short.short_description = "Allowed origins regex"
 
+    def has_add_permission(self, request):
+        # Only allow adding if nothing exists (usually never needed)
+        if EdgeModuleCors.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        # Never allow delete from admin; use "Enabled" flag instead
+        return False
