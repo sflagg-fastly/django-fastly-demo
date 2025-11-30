@@ -145,19 +145,16 @@ class FastlyClient:
         except (KeyError, ValueError, TypeError):
             raise FastlyAPIError("Active version number is missing or invalid.")
 
-    def validate_active_vcl(self) -> Tuple[bool, str]:
+    def validate_version(self, version: int) -> tuple[bool, str]:
         """
-        Validate the active VCL version via the Fastly API.
+        Validate a specific Fastly service version.
         """
-        version = self._get_active_version_number()
         url = f"{self.base_url}/service/{self.service_id}/version/{version}/validate"
-
         if self.config.debug_mode:
-            logger.debug("Validating Fastly VCL: %s", url)
+            logger.debug("Validating Fastly VCL version %s: %s", version, url)
 
         resp = requests.get(url, headers=self._headers(), timeout=10)
         if resp.ok:
-            # Fastly returns JSON with status info; we keep it simple.
             return True, (
                 f"Fastly VCL for service {self.service_id} "
                 f"version {version} is valid."
@@ -168,6 +165,151 @@ class FastlyClient:
             f"version {version} ({resp.status_code}): {resp.text}"
         )
 
+    def validate_active_vcl(self) -> tuple[bool, str]:
+        """
+        Convenience helper that validates the active version.
+        """
+        version = self._get_active_version_number()
+        return self.validate_version(version)
+
+    def _clone_version(self, version: int) -> int:
+        """
+        Clone a Fastly service version and return the new version number.
+        Mirrors the Fastly 'version.clone' endpoint.
+        """
+        url = f"{self.base_url}/service/{self.service_id}/version/{version}/clone"
+        if self.config.debug_mode:
+            logger.debug("Cloning Fastly service %s version %s: %s", self.service_id, version, url)
+
+        resp = requests.put(url, headers=self._headers(), timeout=10)
+        if not resp.ok:
+            raise FastlyAPIError(
+                f"Failed to clone service version {version} "
+                f"({resp.status_code}): {resp.text}"
+            )
+
+        data = resp.json()
+        try:
+            new_version = int(data["number"])
+        except (KeyError, ValueError, TypeError):
+            raise FastlyAPIError(
+                f"Clone succeeded but response did not include a valid version number: {data}"
+            )
+
+        return new_version
+
+    def apply_cors_vcl(self, cors_module, autoclone: bool = True, activate: bool = False) -> tuple[int, bool]:
+        """
+        Render and apply the CORS Edge Module as a Fastly VCL snippet.
+
+        Steps:
+        - Require the module to be enabled.
+        - Clone the active version (by default) to get an editable version.
+        - Upsert a 'deliver' snippet named 'cors_headers' with rendered content.
+        - Validate the new version.
+        - Optionally activate it.
+
+        Returns (version_number, activated_flag).
+        """
+        if not getattr(cors_module, "enabled", False):
+            raise FastlyAPIError(
+                "CORS Edge Module is disabled; enable it before applying VCL."
+            )
+
+        # Determine base version (active) and clone if requested.
+        active_version = self._get_active_version_number()
+        target_version = active_version
+
+        if autoclone:
+            target_version = self._clone_version(active_version)
+
+        # Render VCL snippet from the module
+        try:
+            content = cors_module.render_vcl_snippet()
+        except Exception as exc:
+            raise FastlyAPIError(f"Failed to render CORS VCL snippet: {exc}") from exc
+
+        snippet_name = "cors_headers"
+        headers = self._headers()
+        snippet_base = f"{self.base_url}/service/{self.service_id}/version/{target_version}/snippet"
+        get_url = f"{snippet_base}/{snippet_name}"
+
+        # Check if snippet already exists
+        if self.config.debug_mode:
+            logger.debug(
+                "Checking for existing CORS snippet '%s' on version %s: %s",
+                snippet_name,
+                target_version,
+                get_url,
+            )
+
+        resp = requests.get(get_url, headers=headers, timeout=10)
+
+        payload = {
+            "type": "deliver",
+            "priority": "100",
+            "content": content,
+        }
+
+        if resp.status_code == 404:
+            # Create new snippet
+            if self.config.debug_mode:
+                logger.debug(
+                    "Creating new CORS snippet '%s' on version %s",
+                    snippet_name,
+                    target_version,
+                )
+
+            payload["name"] = snippet_name
+            create_url = snippet_base
+            resp = requests.post(
+                create_url, headers=headers, data=payload, timeout=10
+            )
+        elif resp.ok:
+            # Update existing snippet
+            if self.config.debug_mode:
+                logger.debug(
+                    "Updating existing CORS snippet '%s' on version %s",
+                    snippet_name,
+                    target_version,
+                )
+
+            update_url = get_url
+            resp = requests.put(
+                update_url, headers=headers, data=payload, timeout=10
+            )
+        else:
+            raise FastlyAPIError(
+                f"Failed to check existing CORS snippet ({resp.status_code}): {resp.text}"
+            )
+
+        if not resp.ok:
+            raise FastlyAPIError(
+                f"Failed to create/update CORS VCL snippet ({resp.status_code}): {resp.text}"
+            )
+
+        # Validate the target version
+        ok, msg = self.validate_version(target_version)
+        if not ok:
+            raise FastlyAPIError(
+                f"Fastly reported validation error for version {target_version}: {msg}"
+            )
+
+        activated = False
+        if activate:
+            activate_url = f"{self.base_url}/service/{self.service_id}/version/{target_version}/activate"
+            if self.config.debug_mode:
+                logger.debug("Activating version %s: %s", target_version, activate_url)
+
+            resp = requests.put(activate_url, headers=headers, timeout=10)
+            if not resp.ok:
+                raise FastlyAPIError(
+                    f"Failed to activate version {target_version} "
+                    f"({resp.status_code}): {resp.text}"
+                )
+            activated = True
+
+        return target_version, activated
 
 
 def get_fastly_client(config: FastlyConfig | None = None) -> FastlyClient:

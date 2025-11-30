@@ -125,8 +125,8 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
             {
                 "fields": ("enabled",),
                 "description": (
-                    "Configure CORS headers to be applied via Fastly VCL in a "
-                    "future step. For now this stores the settings."
+                    "Configure CORS headers to be applied via Fastly VCL. "
+                    "Use the admin action below to push a snippet to Fastly."
                 ),
             },
         ),
@@ -154,6 +154,8 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
         "updated_at",
     )
 
+    actions = ["apply_cors_vcl_to_fastly"]
+
     def allowed_origins_regex_short(self, obj):
         value = (obj.allowed_origins_regex or "").strip()
         if not value:
@@ -164,12 +166,44 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
 
     allowed_origins_regex_short.short_description = "Allowed origins regex"
 
+    @admin.action(description="Apply CORS VCL to Fastly (clone active version)")
+    def apply_cors_vcl_to_fastly(self, request, queryset):
+        # We treat this as a singleton; ignore queryset and use get_solo().
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+        except FastlyAPIError as exc:
+            self.message_user(
+                request,
+                f"Fastly not configured: {exc}",
+                level=messages.ERROR,
+            )
+            return
+
+        cors = EdgeModuleCors.get_solo()
+        try:
+            version, activated = client.apply_cors_vcl(
+                cors_module=cors,
+                autoclone=True,   # clone active to a new editable version
+                activate=False,   # let the user activate in the Fastly UI
+            )
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            return
+
+        msg = (
+            f"CORS VCL snippet applied to Fastly service {config.service_id} "
+            f"on version {version}. Version has NOT been activated; "
+            f"activate it via the Fastly UI when ready."
+        )
+        self.message_user(request, msg, level=messages.SUCCESS)
+
     def has_add_permission(self, request):
-        # Only allow adding if nothing exists (usually never needed)
+        # Singleton: only allow adding if nothing exists
         if EdgeModuleCors.objects.exists():
             return False
         return super().has_add_permission(request)
 
     def has_delete_permission(self, request, obj=None):
-        # Never allow delete from admin; use "Enabled" flag instead
+        # Don't allow delete; use 'enabled' to disable instead
         return False

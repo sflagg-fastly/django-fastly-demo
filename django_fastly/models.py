@@ -224,3 +224,54 @@ class EdgeModuleCors(models.Model):
     def get_solo(cls) -> "EdgeModuleCors":
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+    
+    def render_vcl_snippet(self) -> str:
+        """
+        Render a VCL snippet equivalent to the WP Edge Module JSON.
+
+        This produces a `deliver`-type snippet that:
+        - Checks for Origin and absence of existing CORS headers.
+        - Applies either '*' or a regex-matched Origin.
+        - Sets allowed methods and headers.
+        """
+        # Fallbacks similar to the WP defaults
+        methods = (self.allowed_methods or "GET,HEAD,POST,OPTIONS").strip()
+        headers = (self.allowed_headers or "").strip()
+        regex = (self.allowed_origins_regex or "").strip()
+
+        # Escape double quotes to avoid breaking VCL strings
+        methods_escaped = methods.replace('"', '\\"')
+        headers_escaped = headers.replace('"', '\\"')
+        regex_escaped = regex.replace('"', '\\"')
+
+        lines: list[str] = []
+        lines.append(
+            '  if (req.http.Origin && !resp.http.Access-Control-Allow-Origin && '
+            '!resp.http.Access-Control-Allow-Methods && '
+            '!resp.http.Access-Control-Allow-Headers) {'
+        )
+
+        if self.origin_mode == self.ORIGIN_ANYONE:
+            lines.append('    set resp.http.Access-Control-Allow-Origin = "*";')
+        elif self.origin_mode == self.ORIGIN_REGEX and regex_escaped:
+            lines.append(
+                f'    if ( req.http.Origin ~ "^https?://{regex_escaped}" ) {{'
+            )
+            lines.append('      set resp.http.Access-Control-Allow-Origin = req.http.Origin;')
+            lines.append('    }')
+
+        lines.append(
+            f'    set resp.http.Access-Control-Allow-Methods = "{methods_escaped}";'
+        )
+
+        if headers_escaped:
+            lines.append(
+                f'    set resp.http.Access-Control-Allow-Headers = "{headers_escaped}";'
+            )
+
+        # Mirrors: set resp.http.Vary:Origin = "";
+        lines.append('    set resp.http.Vary:Origin = "";')
+        lines.append('  }')
+
+        return "\n".join(lines)
+
