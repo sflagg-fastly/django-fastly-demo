@@ -248,6 +248,7 @@ class FastlyClient:
         payload = {
             "type": "deliver",
             "priority": "100",
+            "dynamic": "0",
             "content": content,
         }
 
