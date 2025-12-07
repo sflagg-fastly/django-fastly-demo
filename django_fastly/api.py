@@ -311,7 +311,150 @@ class FastlyClient:
             activated = True
 
         return target_version, activated
+    
+    def apply_disable_cache_vcl(
+        self,
+        disablecache_module,
+        autoclone: bool = True,
+        activate: bool = False,
+    ) -> tuple[int, bool]:
+        """
+        Render and apply the Disable caching Edge Module as two VCL snippets:
 
+        - recv snippet:  'disablecache_recv'   (Fastly cache bypass)
+        - deliver snippet: 'disablecache_deliver' (browser cache bypass)
+
+        Steps:
+        - Require the module to be enabled.
+        - Clone the active version (by default) to get an editable version.
+        - Upsert both snippets.
+        - Validate the new version.
+        - Optionally activate it.
+
+        Returns (version_number, activated_flag).
+        """
+        if not getattr(disablecache_module, "enabled", False):
+            raise FastlyAPIError(
+                "Disable caching Edge Module is disabled; enable it before applying VCL."
+            )
+
+        active_version = self._get_active_version_number()
+        target_version = active_version
+        if autoclone:
+            target_version = self._clone_version(active_version)
+
+        # Render VCL from the module
+        try:
+            recv_content = disablecache_module.render_recv_vcl_snippet()
+            deliver_content = disablecache_module.render_deliver_vcl_snippet()
+        except Exception as exc:
+            raise FastlyAPIError(
+                f"Failed to render Disable caching VCL snippet(s): {exc}"
+            ) from exc
+
+        headers = self._headers()
+        snippet_base = (
+            f"{self.base_url}/service/{self.service_id}/version/{target_version}/snippet"
+        )
+
+        snippets = [
+            ("disablecache_recv", "recv", recv_content),
+            ("disablecache_deliver", "deliver", deliver_content),
+        ]
+
+        for snippet_name, snippet_type, content in snippets:
+            get_url = f"{snippet_base}/{snippet_name}"
+            if self.config.debug_mode:
+                logger.debug(
+                    "Checking for existing DisableCache snippet '%s' (%s) on version %s: %s",
+                    snippet_name,
+                    snippet_type,
+                    target_version,
+                    get_url,
+                )
+
+            resp = requests.get(get_url, headers=headers, timeout=10)
+
+            payload = {
+                "type": snippet_type,
+                "priority": "110",  # slightly after core app VCL; adjust as desired
+                "dynamic": "0",
+                "content": content,
+            }
+
+            if resp.status_code == 404:
+                # Create new snippet
+                if self.config.debug_mode:
+                    logger.debug(
+                        "Creating DisableCache snippet '%s' (%s) on version %s",
+                        snippet_name,
+                        snippet_type,
+                        target_version,
+                    )
+                payload["name"] = snippet_name
+                create_url = snippet_base
+                resp = requests.post(
+                    create_url,
+                    headers=headers,
+                    data=payload,
+                    timeout=10,
+                )
+            elif resp.ok:
+                # Update existing snippet
+                if self.config.debug_mode:
+                    logger.debug(
+                        "Updating DisableCache snippet '%s' (%s) on version %s",
+                        snippet_name,
+                        snippet_type,
+                        target_version,
+                    )
+                resp = requests.put(
+                    get_url,
+                    headers=headers,
+                    data=payload,
+                    timeout=10,
+                )
+            else:
+                raise FastlyAPIError(
+                    f"Failed to check existing DisableCache snippet "
+                    f"'{snippet_name}' ({resp.status_code}): {resp.text}"
+                )
+
+            if not resp.ok:
+                raise FastlyAPIError(
+                    f"Failed to create/update DisableCache snippet "
+                    f"'{snippet_name}' ({resp.status_code}): {resp.text}"
+                )
+
+        # Validate new version
+        ok, msg = self.validate_version(target_version)
+        if not ok:
+            raise FastlyAPIError(
+                f"Fastly reported validation error for version {target_version}: {msg}"
+            )
+
+        activated = False
+        if activate:
+            activate_url = (
+                f"{self.base_url}/service/{self.service_id}/version/"
+                f"{target_version}/activate"
+            )
+            if self.config.debug_mode:
+                logger.debug(
+                    "Activating version %s for DisableCache: %s",
+                    target_version,
+                    activate_url,
+                )
+
+            resp = requests.put(activate_url, headers=headers, timeout=10)
+            if not resp.ok:
+                raise FastlyAPIError(
+                    f"Failed to activate version {target_version} "
+                    f"({resp.status_code}): {resp.text}"
+                )
+            activated = True
+
+        return target_version, activated
 
 def get_fastly_client(config: FastlyConfig | None = None) -> FastlyClient:
     if config is None:

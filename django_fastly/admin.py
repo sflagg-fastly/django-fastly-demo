@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 
 from .api import FastlyAPIError, get_fastly_client
-from .models import FastlyConfig, PurgeLog, EdgeModuleCors
+from .models import FastlyConfig, PurgeLog, EdgeModuleCors, EdgeModuleDisableCache, NoCacheRule
 
 
 @admin.register(FastlyConfig)
@@ -243,3 +243,114 @@ class EdgeModuleCorsAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+class NoCacheRuleInline(admin.TabularInline):
+    model = NoCacheRule
+    extra = 1
+    fields = ("order", "path_pattern", "mode")
+    ordering = ("order", "id")
+
+
+@admin.register(EdgeModuleDisableCache)
+class EdgeModuleDisableCacheAdmin(admin.ModelAdmin):
+    inlines = [NoCacheRuleInline]
+
+    fieldsets = (
+        (
+            "Edge Module",
+            {
+                "fields": ("enabled",),
+                "description": (
+                    "Configure rules to disable caching for specific paths "
+                    "on Fastly, in the browser, or both. "
+                    "Use the admin actions below to push snippets to Fastly."
+                ),
+            },
+        ),
+    )
+
+    list_display = ("enabled", "rule_count", "updated_at")
+    actions = [
+        "apply_disable_cache_vcl_to_fastly",
+        "apply_and_activate_disable_cache_vcl_to_fastly",
+    ]
+
+    def rule_count(self, obj):
+        return obj.rules.count()
+
+    rule_count.short_description = "Rules"
+
+    @admin.action(
+        description="Apply Disable caching VCL to Fastly (clone active version)"
+    )
+    def apply_disable_cache_vcl_to_fastly(self, request, queryset):
+        # Singleton: ignore queryset, use get_solo()
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+        except FastlyAPIError as exc:
+            self.message_user(
+                request,
+                f"Fastly not configured: {exc}",
+                level=messages.ERROR,
+            )
+            return
+
+        module = EdgeModuleDisableCache.get_solo()
+        try:
+            version, activated = client.apply_disable_cache_vcl(
+                disablecache_module=module,
+                autoclone=True,
+                activate=False,  # apply only
+            )
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            return
+
+        msg = (
+            f"Disable caching VCL snippets applied to Fastly service {config.service_id} "
+            f"on version {version}. Version has NOT been activated; "
+            f"activate it via the Fastly UI if desired."
+        )
+        self.message_user(request, msg, level=messages.SUCCESS)
+
+    @admin.action(
+        description=(
+            "Apply Disable caching VCL to Fastly and ACTIVATE cloned version (dangerous)"
+        )
+    )
+    def apply_and_activate_disable_cache_vcl_to_fastly(self, request, queryset):
+        config = FastlyConfig.get_solo()
+        try:
+            client = get_fastly_client(config)
+        except FastlyAPIError as exc:
+            self.message_user(
+                request,
+                f"Fastly not configured: {exc}",
+                level=messages.ERROR,
+            )
+            return
+
+        module = EdgeModuleDisableCache.get_solo()
+        try:
+            version, activated = client.apply_disable_cache_vcl(
+                disablecache_module=module,
+                autoclone=True,
+                activate=True,  # apply + activate
+            )
+        except FastlyAPIError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            return
+
+        msg = (
+            f"Disable caching VCL snippets applied to Fastly service {config.service_id} "
+            f"on version {version}, and that version has been ACTIVATED."
+        )
+        self.message_user(request, msg, level=messages.SUCCESS)
+
+    def has_add_permission(self, request):
+        if EdgeModuleDisableCache.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False

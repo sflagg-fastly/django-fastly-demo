@@ -95,13 +95,19 @@ CSRF_TRUSTED_ORIGINS = [
     "https://django-fastly-demo.onrender.com",
     "https://django-fastly-demo.global.ssl.fastly.net",
     # If you later add a custom CNAME, put it here too, e.g.:
-    # "https://admin.yourdomain.com",
+    # "https://admin.yourdomain.com"
 ]
 
 ALLOWED_HOSTS = [
+    # Local dev
+    "127.0.0.1",
+    "localhost",
+    "0.0.0.0",
+
+    # Deployed hosts
     "django-fastly-demo.onrender.com",
     "django-fastly-demo.global.ssl.fastly.net",
-    # plus "localhost", "127.0.0.1" etc. for local dev as needed
+    
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

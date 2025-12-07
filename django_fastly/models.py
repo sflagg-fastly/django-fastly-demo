@@ -275,3 +275,150 @@ class EdgeModuleCors(models.Model):
 
         return "\n".join(lines)
 
+class EdgeModuleDisableCache(models.Model):
+    """
+    Edge Module: Disable caching (Fastly + browser)
+
+    Based on fastly_edge_modules/nocache.json from the WP plugin.
+    """
+
+    enabled = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Enable this Edge Module (Disable caching for selected paths)."
+        ),
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Edge module: Disable caching")
+        verbose_name_plural = _("Edge modules: Disable caching")
+
+    def __str__(self) -> str:
+        status = "enabled" if self.enabled else "disabled"
+        return f"Disable caching Edge Module ({status})"
+
+    @classmethod
+    def get_solo(cls) -> "EdgeModuleDisableCache":
+        # Singleton pattern: one config row
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def render_recv_vcl_snippet(self) -> str:
+        """
+        Render a `recv`-type VCL snippet that disables Fastly caching
+        for paths whose mode is 'fastly' or 'both'.
+
+        We approximate the WP module behaviour by forcing a cache miss
+        via `req.hash_always_miss = true;`.
+        """
+        lines: list[str] = []
+        lines.append("  # Edge Module: Disable caching (Fastly side)")
+        for rule in self.rules.all():
+            pattern = (rule.path_pattern or "").strip()
+            if not pattern:
+                continue
+
+            if rule.mode not in (
+                NoCacheRule.MODE_FASTLY,
+                NoCacheRule.MODE_BOTH,
+            ):
+                continue
+
+            pat_escaped = pattern.replace('"', '\\"')
+            lines.append(f'  if ( req.url.path ~ "{pat_escaped}" ) {{')
+            lines.append("    set req.hash_always_miss = true;")
+            lines.append("  }")
+
+        if not lines:
+            return "  # No disable-cache rules configured for Fastly."
+        return "\n".join(lines)
+
+    def render_deliver_vcl_snippet(self) -> str:
+        """
+        Render a `deliver`-type VCL snippet that disables browser caching
+        for paths whose mode is 'browser' or 'both'.
+
+        This roughly matches the WP nocache module idea:
+        - Set Cache-Control to no-cache/private
+        - Unset Expires and Pragma
+        """
+        lines: list[str] = []
+        lines.append("  # Edge Module: Disable caching (browser side)")
+        for rule in self.rules.all():
+            pattern = (rule.path_pattern or "").strip()
+            if not pattern:
+                continue
+
+            if rule.mode not in (
+                NoCacheRule.MODE_BROWSER,
+                NoCacheRule.MODE_BOTH,
+            ):
+                continue
+
+            pat_escaped = pattern.replace('"', '\\"')
+            lines.append(f'  if ( req.url.path ~ "{pat_escaped}" ) {{')
+            lines.append(
+                '    set resp.http.Cache-Control = "no-cache, private";'
+            )
+            lines.append("    unset resp.http.Expires;")
+            lines.append("    unset resp.http.Pragma;")
+            lines.append("  }")
+
+        if not lines:
+            return "  # No disable-cache rules configured for browsers."
+        return "\n".join(lines)
+
+
+class NoCacheRule(models.Model):
+    """
+    Rules group for EdgeModuleDisableCache.
+
+    Mirrors the `rules` group in fastly_edge_modules/nocache.json:
+    - pathpattern
+    - mode: browser|fastly|both
+    """
+
+    MODE_BROWSER = "browser"
+    MODE_FASTLY = "fastly"
+    MODE_BOTH = "both"
+
+    MODE_CHOICES = [
+        (MODE_BROWSER, "Browser only"),
+        (MODE_FASTLY, "Fastly only"),
+        (MODE_BOTH, "Browser and Fastly"),
+    ]
+
+    module = models.ForeignKey(
+        "EdgeModuleDisableCache",
+        related_name="rules",
+        on_delete=models.CASCADE,
+    )
+
+    path_pattern = models.CharField(
+        max_length=255,
+        help_text=_(
+            "VCL regex for req.url.path, e.g. '^/private/' or '\\.no-cache$'."
+        ),
+    )
+
+    mode = models.CharField(
+        max_length=16,
+        choices=MODE_CHOICES,
+        default=MODE_BOTH,
+        help_text=_(
+            "Where to disable caching: browser, Fastly, or both."
+        ),
+    )
+
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text=_("Optional order for applying rules (lower runs first)."),
+    )
+
+    class Meta:
+        ordering = ("order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.path_pattern} ({self.mode})"
